@@ -43,7 +43,7 @@ public class TestVMCreation {
 		vmc = VMCreatorFactory.createApproachesExercise();
 	}
 
-	@Test(timeout = 100)
+	@Test//(timeout = 100)
 	public void testFirstApproach() throws Exception {
 		int beforeSize = ExercisesBase.pmforwarders.size();
 		int beforeIaaSSize = ExercisesBase.iaasforwarders.size();
