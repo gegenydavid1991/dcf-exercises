@@ -20,20 +20,14 @@
  *  
  *  (C) Copyright 2015, Gabor Kecskemeti (kecskemeti@iit.uni-miskolc.hu)
  */
+package hu.unimiskolc.iit.distsys.interfaces;
 
-package hu.unimiskolc.iit.distsys;
+import java.util.Collection;
 
-import hu.unimiskolc.iit.distsys.interfaces.VMCreationApproaches;
+import hu.mta.sztaki.lpds.cloud.simulator.helpers.job.Job;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine;
 
-public class VMCreatorFactory {
-	public static VMCreationApproaches createApproachesExercise()
-			throws ClassNotFoundException, InstantiationException,
-			IllegalAccessException {
-			
-		System.setProperty("hu.unimiskolc.iit.distsys.VMC", "hu.unimiskolc.iit.distsys.VMC");
-		
-		return (VMCreationApproaches) Class.forName(
-				System.getProperty("hu.unimiskolc.iit.distsys.VMC"))
-				.newInstance();
-	}
+public interface BasicJobScheduler {
+	void setupVMset(Collection<VirtualMachine> vms);
+	void handleJobRequestArrival(Job j);
 }

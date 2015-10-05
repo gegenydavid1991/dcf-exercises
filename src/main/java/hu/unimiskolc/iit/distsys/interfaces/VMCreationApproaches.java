@@ -21,19 +21,14 @@
  *  (C) Copyright 2015, Gabor Kecskemeti (kecskemeti@iit.uni-miskolc.hu)
  */
 
-package hu.unimiskolc.iit.distsys;
+package hu.unimiskolc.iit.distsys.interfaces;
 
-import hu.unimiskolc.iit.distsys.interfaces.VMCreationApproaches;
+public interface VMCreationApproaches {
+	public void directVMCreation() throws Exception;
 
-public class VMCreatorFactory {
-	public static VMCreationApproaches createApproachesExercise()
-			throws ClassNotFoundException, InstantiationException,
-			IllegalAccessException {
-			
-		System.setProperty("hu.unimiskolc.iit.distsys.VMC", "hu.unimiskolc.iit.distsys.VMC");
-		
-		return (VMCreationApproaches) Class.forName(
-				System.getProperty("hu.unimiskolc.iit.distsys.VMC"))
-				.newInstance();
-	}
+	public void twoPhaseVMCreation() throws Exception;
+
+	public void indirectVMCreation() throws Exception;
+
+	public void migratedVMCreation() throws Exception;
 }
