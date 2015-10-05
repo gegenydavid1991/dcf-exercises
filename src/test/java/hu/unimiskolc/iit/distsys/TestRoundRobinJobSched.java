@@ -39,7 +39,7 @@ import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.AlterableResourceCons
 import hu.unimiskolc.iit.distsys.interfaces.FillInAllPMs;
 
 public class TestRoundRobinJobSched {
-	@Test(timeout = 10000)
+	@Test//(timeout = 10000)
 	public void testRRWithPMFiller() throws Exception {
 		final int requestedVMcount = 100;
 		// Preparing the IaaS

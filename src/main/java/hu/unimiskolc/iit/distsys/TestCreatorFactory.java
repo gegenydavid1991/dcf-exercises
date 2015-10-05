@@ -30,17 +30,20 @@ import hu.unimiskolc.iit.distsys.interfaces.VMCreationApproaches;
 public class TestCreatorFactory {
 	public static VMCreationApproaches createApproachesExercise()
 			throws ClassNotFoundException, InstantiationException, IllegalAccessException {
+		System.setProperty("hu.unimiskolc.iit.distsys.VMC", "hu.unimiskolc.iit.distsys.VMC");
 		return (VMCreationApproaches) Class.forName(System.getProperty("hu.unimiskolc.iit.distsys.VMC")).newInstance();
 	}
 
 	public static BasicJobScheduler createARoundRobinScheduler()
 			throws ClassNotFoundException, InstantiationException, IllegalAccessException {
+		System.setProperty("hu.unimiskolc.iit.distsys.RRJSched", "hu.unimiskolc.iit.distsys.RRJSched");
 		return (BasicJobScheduler) Class.forName(System.getProperty("hu.unimiskolc.iit.distsys.RRJSched"))
 				.newInstance();
 	}
 
 	public static FillInAllPMs getPMFiller()
 			throws ClassNotFoundException, InstantiationException, IllegalAccessException {
+		System.setProperty("hu.unimiskolc.iit.distsys.PMFiller", "hu.unimiskolc.iit.distsys.PMFiller");
 		return (FillInAllPMs) Class.forName(System.getProperty("hu.unimiskolc.iit.distsys.PMFiller"))
 				.newInstance();
 	}
