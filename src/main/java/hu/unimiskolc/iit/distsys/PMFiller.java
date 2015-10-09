@@ -1,5 +1,7 @@
 package hu.unimiskolc.iit.distsys;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 
 import hu.mta.sztaki.lpds.cloud.simulator.Timed;
@@ -18,41 +20,70 @@ public class PMFiller implements FillInAllPMs
 	@Override
 	public void filler(IaaSService iaas, int vmCount) 
 	{
+		AlterableResourceConstraints arc;
+		VirtualAppliance va = (VirtualAppliance) iaas.repositories.get(0).lookup("mainVA");
+		
 		Timed.simulateUntilLastEvent();
 		
-		VirtualAppliance va = new VirtualAppliance("VAGD", 1, 0);
-		AlterableResourceConstraints arc;
+		ArrayList<PhysicalMachine> orderedPMs = new ArrayList<PhysicalMachine>();
 		
-		for (int j = 0; j < 9; j++) 
+		for(int i = 0; i < iaas.machines.size(); i++)
 		{
-			int maxIndex = 0;
-			for (int i = 1; i < iaas.machines.size(); i++)
-			{
-				if (iaas.machines.get(i).freeCapacities.getRequiredCPUs() > iaas.machines.get(maxIndex).freeCapacities
-						.getRequiredCPUs()) {
-					maxIndex = i;
-				}
-			}
-			iaas.machines.get(maxIndex).localDisk.registerObject(va);
-			arc = new AlterableResourceConstraints(iaas.machines.get(maxIndex).freeCapacities.getRequiredCPUs(), 1, 1);
+			orderedPMs.add(iaas.machines.get(i));
+		}
+		
+		Collections.sort(orderedPMs, new PMComparator());
+		
+		for(int i = 0; i < orderedPMs.size() - 1; i++)
+		{
+			arc = new AlterableResourceConstraints(orderedPMs.get(i).freeCapacities.getRequiredCPUs(), orderedPMs.get(i).freeCapacities.getRequiredProcessingPower(), 1);
+			
 			try 
 			{
-				iaas.requestVM(va, arc, iaas.machines.get(maxIndex).localDisk, 1);
+				VirtualMachine vm = iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), arc, iaas.repositories.get(0), 1)[0];
+				Timed.simulateUntilLastEvent();
+
+				System.out.println(orderedPMs.get(i));
+				System.out.println(vm.getResourceAllocation().getHost());
+				System.out.println(vm);
+				System.out.println("___________________");
 			} 
 			catch (Exception e)
 			{
 				e.printStackTrace();
-			} 
+			}
 		}
-		
 		
 		
 		Timed.simulateUntilLastEvent();
 				
+		arc = new AlterableResourceConstraints(orderedPMs.get(orderedPMs.size() - 1).freeCapacities);
+		arc.multiply(1.0 / 91.0);
+		
+		try 
+		{
+			iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), arc, iaas.repositories.get(0), 91);
+		} 
+		catch(Exception e)
+		{
+			e.printStackTrace();
+		}
+		
+		Timed.simulateUntilLastEvent();
+		
 		for(int i = 0; i < iaas.machines.size(); i++)
 		{
-			System.out.println(iaas.machines.get(i).toString());
+			System.out.println();
 			
+			System.out.println(iaas.machines.get(i).toString());
+			System.out.println(iaas.machines.get(i).freeCapacities.toString());
+			
+			for(VirtualMachine vm : iaas.machines.get(i).listVMs())
+			{
+				System.out.println(vm);
+			}
+			
+			System.out.println();
 			System.out.println("--------------------");
 		}
 	}
