@@ -10,22 +10,25 @@ import hu.mta.sztaki.lpds.cloud.simulator.iaas.PhysicalMachine;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.VMManager.VMManagementException;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.AlterableResourceConstraints;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.ConstantConstraints;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.ResourceConstraints;
 import hu.mta.sztaki.lpds.cloud.simulator.io.NetworkNode.NetworkException;
 import hu.mta.sztaki.lpds.cloud.simulator.io.VirtualAppliance;
 import hu.unimiskolc.iit.distsys.interfaces.FillInAllPMs;
 
 public class PMFiller implements FillInAllPMs
 {
+	ArrayList<PhysicalMachine> orderedPMs = new ArrayList<PhysicalMachine>();
 
 	@Override
 	public void filler(IaaSService iaas, int vmCount) 
 	{
-		AlterableResourceConstraints arc;
+		int remainingVMs = 100;
+		
+		ResourceConstraints rc;
 		VirtualAppliance va = (VirtualAppliance) iaas.repositories.get(0).lookup("mainVA");
 		
 		Timed.simulateUntilLastEvent();
-		
-		ArrayList<PhysicalMachine> orderedPMs = new ArrayList<PhysicalMachine>();
 		
 		for(int i = 0; i < iaas.machines.size(); i++)
 		{
@@ -36,56 +39,58 @@ public class PMFiller implements FillInAllPMs
 		
 		for(int i = 0; i < orderedPMs.size() - 1; i++)
 		{
-			arc = new AlterableResourceConstraints(orderedPMs.get(i).freeCapacities.getRequiredCPUs(), orderedPMs.get(i).freeCapacities.getRequiredProcessingPower(), 1);
-			
-			try 
-			{
-				VirtualMachine vm = iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), arc, iaas.repositories.get(0), 1)[0];
-				Timed.simulateUntilLastEvent();
-
-				System.out.println(orderedPMs.get(i));
-				System.out.println(vm.getResourceAllocation().getHost());
-				System.out.println(vm);
-				System.out.println("___________________");
-			} 
-			catch (Exception e)
-			{
-				e.printStackTrace();
-			}
+			OccupyPM( iaas, orderedPMs.get(i) );
+			remainingVMs--;
 		}
 		
 		
 		Timed.simulateUntilLastEvent();
-				
-		arc = new AlterableResourceConstraints(orderedPMs.get(orderedPMs.size() - 1).freeCapacities);
-		arc.multiply(1.0 / 91.0);
+		
+		AlterableResourceConstraints arc = new AlterableResourceConstraints(orderedPMs.get(orderedPMs.size() - 1).freeCapacities);
+		arc.multiply(1.0 / (double) remainingVMs);
+		rc = new ConstantConstraints(arc);
 		
 		try 
 		{
-			iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), arc, iaas.repositories.get(0), 91);
+			iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), rc, iaas.repositories.get(0), 90);
+			remainingVMs -= 90;
 		} 
 		catch(Exception e)
 		{
 			e.printStackTrace();
 		}
 		
+		rc = new ConstantConstraints(orderedPMs.get(orderedPMs.size() - 1).freeCapacities.getRequiredCPUs(),
+				orderedPMs.get(orderedPMs.size() - 1).freeCapacities.getRequiredProcessingPower(), 1);
+		remainingVMs--;
+		
+		OccupyPM( iaas, orderedPMs.get(orderedPMs.size() - 1) );
+		
 		Timed.simulateUntilLastEvent();
 		
-		for(int i = 0; i < iaas.machines.size(); i++)
+		}
+
+	private void OccupyPM(IaaSService iaas, PhysicalMachine pm)
+	{
+		while( pm.freeCapacities.getRequiredCPUs() >= 0.00000001)
 		{
-			System.out.println();
+			ResourceConstraints rc = new ConstantConstraints(pm.freeCapacities.getRequiredCPUs(), pm.freeCapacities.getRequiredProcessingPower(), 1);
 			
-			System.out.println(iaas.machines.get(i).toString());
-			System.out.println(iaas.machines.get(i).freeCapacities.toString());
-			
-			for(VirtualMachine vm : iaas.machines.get(i).listVMs())
+			try 
 			{
-				System.out.println(vm);
+				VirtualMachine vm = iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), rc, iaas.repositories.get(0), 1)[0];
+				Timed.simulateUntilLastEvent();
+				
+				if(pm.freeCapacities.getRequiredCPUs() >= 0.00000001)
+				{ 
+					iaas.terminateVM(vm, true);
+					Timed.simulateUntilLastEvent();
+				}
+			} 
+			catch (Exception e)
+			{
+				e.printStackTrace();
 			}
-			
-			System.out.println();
-			System.out.println("--------------------");
 		}
 	}
-
 }
