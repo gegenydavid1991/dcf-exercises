@@ -18,9 +18,6 @@ public class RRJSched implements BasicJobScheduler
 	VirtualMachine[] vms = new VirtualMachine[100];
 	ArrayList<Job> jobs = new ArrayList<Job>(); 
 	
-	int count = 0;
-	int current = 0;
-
 	@Override
 	public void setupVMset(Collection<VirtualMachine> vms) 
 	{
@@ -37,7 +34,7 @@ public class RRJSched implements BasicJobScheduler
 				try 
 				{
 					vm.newComputeTask(j.getExectimeSecs(), j.nprocs,
-							new JobConsumptionEventAdapter(j));
+							new JobConsumptionEventAdapter(j, jobs, this));
 					j.started();
 					return;
 				} 
@@ -48,34 +45,7 @@ public class RRJSched implements BasicJobScheduler
 			}
 		}
 		
-		System.out.println("VMs are full.");
-		
-		/*
-		VirtualMachine vm = vms[current++];
-		current %= vms.length;
-		
-		if(vm.underProcessing.size() < 1)
-		{
-			try 
-			{
-				vm.newComputeTask(j.getExectimeSecs(), j.nprocs,
-						new JobConsumptionEventAdapter(j));
-				j.started();
-				return;
-			} 
-			catch (NetworkException e) 
-			{
-				e.printStackTrace();
-			}
-		}
-		else
-		{
-			System.out.println("Queueing job: " + j);
-			//jobs.add(j);
-		}
-		
-		//System.out.println("No free VMs.");
-		//jobs.add(j);*/
+		jobs.add(j);
 	}
 
 }

@@ -16,6 +16,7 @@ import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ConsumptionEventAda
 import hu.mta.sztaki.lpds.cloud.simulator.io.NetworkNode.NetworkException;
 import hu.mta.sztaki.lpds.cloud.simulator.io.VirtualAppliance;
 import hu.unimiskolc.iit.distsys.interfaces.FillInAllPMs;
+import junit.framework.Assert;
 
 public class PMFiller implements FillInAllPMs
 {
@@ -23,7 +24,7 @@ public class PMFiller implements FillInAllPMs
 
 	@Override
 	public void filler(IaaSService iaas, int vmCount) 
-	{
+	{	
 		int remainingVMs = vmCount;
 		
 		ResourceConstraints rc;
@@ -50,7 +51,7 @@ public class PMFiller implements FillInAllPMs
 		
 		try 
 		{
-			iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), rc, iaas.repositories.get(0), 90);
+			iaas.requestVM(va, rc, iaas.repositories.get(0), 90);
 			remainingVMs -= 90;
 		} 
 		catch(Exception e)
@@ -64,17 +65,14 @@ public class PMFiller implements FillInAllPMs
 		
 		OccupyPM( iaas, orderedPMs.get(orderedPMs.size() - 1) );
 		
-		for(VirtualMachine vm : iaas.listVMs())
-		{
-		}
-		
 		}
 
 	private void OccupyPM(IaaSService iaas, PhysicalMachine pm)
-	{
+	{	
 		while( pm.freeCapacities.getRequiredCPUs() >= 0.00000001)
 		{
-			ResourceConstraints rc = new ConstantConstraints(pm.freeCapacities.getRequiredCPUs(), pm.freeCapacities.getRequiredProcessingPower(), 1);
+			ResourceConstraints rc = new ConstantConstraints(pm.freeCapacities.getRequiredCPUs(),
+					pm.freeCapacities.getRequiredProcessingPower(), 1);
 			
 			try 
 			{
