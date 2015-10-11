@@ -109,6 +109,20 @@ public class TestRoundRobinJobSched {
 		//doing the actual simulation
 		Timed.simulateUntilLastEvent();
 
+		int count = 0;
+		
+		for (final Job j : jobs) 
+		{
+			if(j.getRealqueueTime() <= 0 || j.getRealstopTime() <= 0)
+			{
+				System.out.println(count);
+				System.out.println("Real queue time: " + j.getRealqueueTime());
+				System.out.println("Real stop time: " + j.getRealstopTime());
+				System.out.println("--------------");
+			}
+			count++;
+		}
+		
 		// post runtime checks
 		for (final Job j : jobs) {
 			Assert.assertTrue("One of the jobs did not get started", j.getRealqueueTime() > 0);

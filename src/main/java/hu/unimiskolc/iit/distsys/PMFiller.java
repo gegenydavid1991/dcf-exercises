@@ -12,6 +12,7 @@ import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.AlterableResourceConstraints;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.ConstantConstraints;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.ResourceConstraints;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ConsumptionEventAdapter;
 import hu.mta.sztaki.lpds.cloud.simulator.io.NetworkNode.NetworkException;
 import hu.mta.sztaki.lpds.cloud.simulator.io.VirtualAppliance;
 import hu.unimiskolc.iit.distsys.interfaces.FillInAllPMs;
@@ -23,7 +24,7 @@ public class PMFiller implements FillInAllPMs
 	@Override
 	public void filler(IaaSService iaas, int vmCount) 
 	{
-		int remainingVMs = 100;
+		int remainingVMs = vmCount;
 		
 		ResourceConstraints rc;
 		VirtualAppliance va = (VirtualAppliance) iaas.repositories.get(0).lookup("mainVA");
@@ -42,10 +43,7 @@ public class PMFiller implements FillInAllPMs
 			OccupyPM( iaas, orderedPMs.get(i) );
 			remainingVMs--;
 		}
-		
-		
-		Timed.simulateUntilLastEvent();
-		
+				
 		AlterableResourceConstraints arc = new AlterableResourceConstraints(orderedPMs.get(orderedPMs.size() - 1).freeCapacities);
 		arc.multiply(1.0 / (double) remainingVMs);
 		rc = new ConstantConstraints(arc);
@@ -66,7 +64,9 @@ public class PMFiller implements FillInAllPMs
 		
 		OccupyPM( iaas, orderedPMs.get(orderedPMs.size() - 1) );
 		
-		Timed.simulateUntilLastEvent();
+		for(VirtualMachine vm : iaas.listVMs())
+		{
+		}
 		
 		}
 
