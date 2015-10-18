@@ -3,6 +3,7 @@ package hu.unimiskolc.iit.distsys;
 import java.util.Collection;
 
 import hu.mta.sztaki.lpds.cloud.simulator.DeferredEvent;
+import hu.mta.sztaki.lpds.cloud.simulator.Timed;
 import hu.mta.sztaki.lpds.cloud.simulator.helpers.job.Job;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.IaaSService;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.VMManager.VMManagementException;
@@ -26,6 +27,8 @@ public class JobConsumptionEventAdapter extends ConsumptionEventAdapter
 	@Override
 	public void conComplete() 
 	{
+		System.err.println("Job completed at " + Timed.getFireCount() / 1000);
+		
 		new DeferredEvent(25000) 
 		{
 			@Override

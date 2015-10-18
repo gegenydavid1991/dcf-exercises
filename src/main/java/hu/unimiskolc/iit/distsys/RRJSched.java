@@ -14,6 +14,7 @@ import hu.mta.sztaki.lpds.cloud.simulator.Timed;
 import hu.mta.sztaki.lpds.cloud.simulator.helpers.job.Job;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.IaaSService;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.PhysicalMachine;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.VMManager.NoSuchVMException;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.VMManager.VMManagementException;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.AlterableResourceConstraints;
@@ -50,11 +51,6 @@ public class RRJSched implements BasicJobScheduler
 		orderedPMs = new ArrayList<PhysicalMachine>(iaas.machines);
 		Collections.sort(orderedPMs, new PMComparator());
 		
-		for(int i = 0; i < orderedPMs.size(); i++)
-		{
-			System.out.println(orderedPMs.get(i).getCapacities());
-		}
-		
 		scaler = true;
 	}
 
@@ -84,31 +80,11 @@ public class RRJSched implements BasicJobScheduler
 			{
 				vm = createNewVM(job);
 				vm.subscribeStateChange(new VMStateChange(job, vms, iaas));
-				
-				System.out.println("----------------------");
-				
-				for(int i = 0; i < orderedPMs.size(); i++)
-				{
-					System.out.println(orderedPMs.get(i).getCapacities());
-				}
 			} 
 			catch (Exception e) 
 			{
 				System.err.println(e.getMessage());
-				System.out.println("Queueing job.");
-				
-				Collections.sort(orderedPMs, new PMComparator());
-				System.out.println("Best PM");
-				
-				if(orderedPMs.size() > 0)
-				{
-					System.out.println(orderedPMs.get(0));
-				}
-				else
-				{
-					System.err.println("DAFUUUQ?");
-				}
-				
+												
 				new DeferredEvent(1000) {
 
 					@Override
@@ -129,8 +105,7 @@ public class RRJSched implements BasicJobScheduler
 			System.out.println("----------------");
 			try 
 			{
-				job.startNowOnVM(vm, 
-						new JobConsumptionEventAdapter(vm, vms, iaas));
+				job.startNowOnVM(vm, new JobConsumptionEventAdapter(vm, vms, iaas));
 			}
 			catch (NetworkException e) 
 			{
@@ -139,7 +114,10 @@ public class RRJSched implements BasicJobScheduler
 		}
 			
 		System.out.println("Job started " + (++count));
-		//System.out.println(job);
+		System.out.println("Execution time: " + job.getExectimeSecs());
+		System.out.println("Current time: " + Timed.getFireCount() / 1000);
+		System.out.println("Expected finish time: " + (Timed.getFireCount() / 1000 + job.getExectimeSecs()));
+		System.out.println("Expected finish time: " + (job.getStartTimeInstance() + job.getExectimeSecs()));
 		System.out.println("VMs: " + vms.size());
 		System.out.println("-------------------");
 	}
@@ -177,7 +155,7 @@ public class RRJSched implements BasicJobScheduler
 	private VirtualMachine createNewVM(Job job) throws VMManagementException, NetworkException
 	{
 			AlterableResourceConstraints rc = new AlterableResourceConstraints(job.nprocs, job.perProcCPUTime, job.usedMemory);
-			rc.multiply(2);
+			//rc.multiply(2);
 			VirtualMachine vm;
 
 			vm = iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), rc,
@@ -191,11 +169,18 @@ public class RRJSched implements BasicJobScheduler
 	{
 		VirtualMachine handler = null;
 		AlterableResourceConstraints rc = new AlterableResourceConstraints(job.nprocs, job.perProcCPUTime, job.usedMemory);
-		rc.multiply(2);
+		//rc.multiply(2);
 		
 		for(VirtualMachine vm : vms)
 		{
-			if(vm.getResourceAllocation().allocated.compareTo(rc) >= 0
+			//System.out.println(vm.getResourceAllocation().allocated.getRequiredCPUs() * vm.getResourceAllocation().allocated.getRequiredProcessingPower());
+			//System.out.println(rc.getRequiredCPUs() * rc.getRequiredProcessingPower());
+			//System.out.println(vm.underProcessing.size());
+			//System.out.println(vm.getState());
+			//System.out.println("-------------------");
+			
+			if(vm.getResourceAllocation().allocated.getRequiredCPUs() * vm.getResourceAllocation().allocated.getRequiredProcessingPower()
+					> rc.getRequiredCPUs() * rc.getRequiredProcessingPower()
 					&& vm.underProcessing.size() == 0
 					&& vm.getState() == State.RUNNING)
 			{
