@@ -9,6 +9,7 @@ import hu.mta.sztaki.lpds.cloud.simulator.iaas.IaaSService;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.PhysicalMachine;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.VMManager.VMManagementException;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine.State;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.AlterableResourceConstraints;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.ConstantConstraints;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.ResourceConstraints;
@@ -16,19 +17,19 @@ import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ConsumptionEventAda
 import hu.mta.sztaki.lpds.cloud.simulator.io.NetworkNode.NetworkException;
 import hu.mta.sztaki.lpds.cloud.simulator.io.VirtualAppliance;
 import hu.unimiskolc.iit.distsys.interfaces.FillInAllPMs;
-import junit.framework.Assert;
 
 public class PMFiller implements FillInAllPMs
 {
 	ArrayList<PhysicalMachine> orderedPMs = new ArrayList<PhysicalMachine>();
+	VirtualAppliance va;
 
 	@Override
 	public void filler(IaaSService iaas, int vmCount) 
-	{	
+	{
 		int remainingVMs = vmCount;
 		
 		ResourceConstraints rc;
-		VirtualAppliance va = (VirtualAppliance) iaas.repositories.get(0).lookup("mainVA");
+		va = (VirtualAppliance) iaas.repositories.get(0).lookup("mainVA");
 		
 		Timed.simulateUntilLastEvent();
 		
@@ -51,7 +52,7 @@ public class PMFiller implements FillInAllPMs
 		
 		try 
 		{
-			iaas.requestVM(va, rc, iaas.repositories.get(0), 90);
+			iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), rc, iaas.repositories.get(0), 90);
 			remainingVMs -= 90;
 		} 
 		catch(Exception e)
@@ -64,22 +65,20 @@ public class PMFiller implements FillInAllPMs
 		remainingVMs--;
 		
 		OccupyPM( iaas, orderedPMs.get(orderedPMs.size() - 1) );
-		
-		}
+	}
 
 	private void OccupyPM(IaaSService iaas, PhysicalMachine pm)
-	{	
+	{
 		while( pm.freeCapacities.getRequiredCPUs() >= 0.00000001)
 		{
-			ResourceConstraints rc = new ConstantConstraints(pm.freeCapacities.getRequiredCPUs(),
-					pm.freeCapacities.getRequiredProcessingPower(), 1);
+			ResourceConstraints rc = new ConstantConstraints(pm.freeCapacities.getRequiredCPUs(), pm.freeCapacities.getRequiredProcessingPower(), 1);
 			
 			try 
 			{
-				VirtualMachine vm = iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), rc, iaas.repositories.get(0), 1)[0];
+				VirtualMachine vm = iaas.requestVM(va, rc, iaas.repositories.get(0), 1)[0];
 				Timed.simulateUntilLastEvent();
 				
-				if(pm.freeCapacities.getRequiredCPUs() >= 0.00000001)
+				if(vm.getState() == State.RUNNING && pm.freeCapacities.getRequiredCPUs() >= 0.00000001)
 				{ 
 					iaas.terminateVM(vm, true);
 					Timed.simulateUntilLastEvent();

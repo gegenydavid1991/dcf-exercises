@@ -1,34 +1,51 @@
 package hu.unimiskolc.iit.distsys;
 
-import java.util.ArrayList;
+import java.util.Collection;
 
-import hu.mta.sztaki.lpds.cloud.simulator.Timed;
+import hu.mta.sztaki.lpds.cloud.simulator.DeferredEvent;
 import hu.mta.sztaki.lpds.cloud.simulator.helpers.job.Job;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.IaaSService;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.VMManager.VMManagementException;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ConsumptionEventAdapter;
-import hu.unimiskolc.iit.distsys.interfaces.BasicJobScheduler;
 
 public class JobConsumptionEventAdapter extends ConsumptionEventAdapter 
 {
-	Job job;
-	ArrayList<Job> jobs;
-	BasicJobScheduler scheduler;
+	VirtualMachine vm;
+	Collection<VirtualMachine> vms;
+	IaaSService iaas;
 	
-	public JobConsumptionEventAdapter(Job job, ArrayList<Job> jobs, BasicJobScheduler scheduler) 
+	public JobConsumptionEventAdapter(VirtualMachine vm, Collection<VirtualMachine> vms, IaaSService iaas) 
 	{
 		super();
-		this.job = job;
-		this.jobs = jobs;
-		this.scheduler = scheduler;
+		this.vm = vm;
+		this.vms = vms;
+		this.iaas = iaas;
 	}
 	
 	@Override
 	public void conComplete() 
 	{
-		job.completed();
-		if( !jobs.isEmpty() )
+		new DeferredEvent(25000) 
 		{
-			Job j = jobs.remove(0);
-			scheduler.handleJobRequestArrival(j);
-		}
+			@Override
+			protected void eventAction() 
+			{
+				try 
+				{
+					if(vm != null && vm.underProcessing.size() < 1)
+					{
+						vms.remove(vm);
+						iaas.terminateVM(vm, true);
+						System.out.println("VM destroyed.");
+						System.out.println("--------------------");
+					}
+				}
+				catch (Exception e)
+				{
+					e.printStackTrace();
+				}
+			}
+		};
 	}
 }

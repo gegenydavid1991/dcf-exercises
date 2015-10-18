@@ -40,7 +40,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class TestSimpleScaler {
-	@Test(timeout = 10000)
+	@Test//(timeout = 10000)
 	public void testCase() throws Exception {
 		// Preparing the IaaS
 		final IaaSService myIaaS = ExercisesBase.getComplexInfrastructure(100);
@@ -55,7 +55,7 @@ public class TestSimpleScaler {
 					.getRequiredCPUs());
 		}
 		// IaaS is prepared
-
+		
 		// Doing preevaluation of the infrastructure
 		VirtualMachine test = myIaaS.requestVM(va, myIaaS.machines.get(0)
 				.getCapacities(), r, 1)[0];
@@ -67,7 +67,7 @@ public class TestSimpleScaler {
 		Timed.simulateUntilLastEvent();
 		Timed.resetTimed();
 		// Preevaluation completed
-
+		
 		// Preparing the jobs for the VMs
 		RepetitiveRandomTraceGenerator rrtg = new RepetitiveRandomTraceGenerator(
 				ComplexDCFJob.class);
