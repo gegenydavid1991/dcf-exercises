@@ -60,19 +60,15 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 	 * @param preceding
 	 * @param delayAfter
 	 */
-	public ComplexDCFJob(String id, long submit, long queue, long exec,
-			int nprocs, double ppCpu, long ppMem, String user, String group,
-			String executable, Job preceding, long delayAfter) {
-		super(id, submit, queue, exec, nprocs, ppCpu, ppMem, user, group,
-				executable, preceding, delayAfter);
+	public ComplexDCFJob(String id, long submit, long queue, long exec, int nprocs, double ppCpu, long ppMem,
+			String user, String group, String executable, Job preceding, long delayAfter) {
+		super(id, submit, queue, exec, nprocs, ppCpu, ppMem, user, group, executable, preceding, delayAfter);
 	}
 
 	public ComplexDCFJob(ComplexDCFJob toCoupleWith) {
-		super(toCoupleWith.getId(), toCoupleWith.getSubmittimeSecs(),
-				toCoupleWith.getQueuetimeSecs(),
-				toCoupleWith.getExectimeSecs(), toCoupleWith.nprocs,
-				toCoupleWith.perProcCPUTime, toCoupleWith.usedMemory,
-				toCoupleWith.user, toCoupleWith.group, toCoupleWith.executable,
+		super(toCoupleWith.getId(), toCoupleWith.getSubmittimeSecs(), toCoupleWith.getQueuetimeSecs(),
+				toCoupleWith.getExectimeSecs(), toCoupleWith.nprocs, toCoupleWith.perProcCPUTime,
+				toCoupleWith.usedMemory, toCoupleWith.user, toCoupleWith.group, toCoupleWith.executable,
 				toCoupleWith.preceding, toCoupleWith.thinkTimeAfterPreceeding);
 		ArrayList<ComplexDCFJob> list = coupledJobs.get(getId());
 		if (list == null) {
@@ -89,10 +85,12 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 	 * 
 	 * @param vm
 	 * @param completionEvent
+	 * @return <i>true</i> if the VM was suitable to use for the particular job
+	 *         and the job was never assigned to any VM before, <i>false</i>
+	 *         otherwise
 	 * @throws NetworkException
 	 */
-	public void startNowOnVM(VirtualMachine vm, ConsumptionEvent completionEvent)
-			throws NetworkException {
+	public boolean startNowOnVM(VirtualMachine vm, ConsumptionEvent completionEvent) throws NetworkException {
 		if (vm.getState().equals(VirtualMachine.State.RUNNING)) {
 			if (myEvent == null) {
 				DeferredEvent de = vmMarkers.remove(vm);
@@ -100,16 +98,17 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 					de.cancel();
 					vmReuseCount++;
 				}
-				System.out.println("Expected exec time: " + getExectimeSecs());
-				vm.newComputeTask(getExectimeSecs() * 1000 * nprocs * ExercisesBase.maxProcessingCap, 
+				vm.newComputeTask(getExectimeSecs() * 1000 * nprocs * ExercisesBase.maxProcessingCap,
 						ResourceConsumption.unlimitedProcessing, this);
 				allowBasicOperations = true;
 				started();
 				allowBasicOperations = false;
 				myEvent = completionEvent;
 				myVM = vm;
+				return true;
 			}
 		}
+		return false;
 	}
 
 	/**
@@ -129,8 +128,7 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 	 * too long idle time.
 	 */
 	public void conComplete() {
-		if (Thread.currentThread().getStackTrace()[2]
-				.getClassName()
+		if (Thread.currentThread().getStackTrace()[2].getClassName()
 				.equals("hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ResourceSpreader$FreqSyncer")) {
 			// Only allow the operations take place if the conComplete was not
 			// called directly.
@@ -201,13 +199,11 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 	 * @throws IllegalStateException
 	 *             if the function is called more than once!
 	 */
-	public void setAvailabilityLevel(double availabilityLevel)
-			throws IllegalStateException {
+	public void setAvailabilityLevel(double availabilityLevel) throws IllegalStateException {
 		if (this.availabilityLevel == -1) {
 			this.availabilityLevel = availabilityLevel;
 		} else {
-			throw new IllegalStateException(
-					"Cannot alter an already set availability level!");
+			throw new IllegalStateException("Cannot alter an already set availability level!");
 		}
 	}
 
