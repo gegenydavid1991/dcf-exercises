@@ -77,6 +77,7 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 			coupledJobs.put(getId(), list);
 		}
 		list.add(this);
+		this.availabilityLevel=toCoupleWith.availabilityLevel;
 	}
 
 	/**
@@ -119,6 +120,7 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 		if (availabilityLevel < 0) {
 			throw new RuntimeException("CANCELLED: " + this);
 		}
+		myEvent.conCancelled(problematic);
 	}
 
 	/**
