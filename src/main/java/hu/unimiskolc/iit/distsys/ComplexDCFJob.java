@@ -82,7 +82,7 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 					vmReuseCount++;
 				}
 				System.out.println("Expected exec time: " + getExectimeSecs());
-				vm.newComputeTask(getExectimeSecs() * 1000 * vm.getPerTickProcessingPower(),
+				vm.newComputeTask(getExectimeSecs() * 1000 * nprocs * ExercisesBase.maxProcessingCap, 
 						ResourceConsumption.unlimitedProcessing, this);
 				allowBasicOperations = true;
 				started();

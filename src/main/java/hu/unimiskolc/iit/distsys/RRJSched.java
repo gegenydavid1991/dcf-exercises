@@ -51,6 +51,19 @@ public class RRJSched implements BasicJobScheduler
 		orderedPMs = new ArrayList<PhysicalMachine>(iaas.machines);
 		Collections.sort(orderedPMs, new PMComparator());
 		
+		double max = 0;
+		
+		for(int i = 0; i < orderedPMs.size(); i++)
+		{
+			double temp = orderedPMs.get(i).freeCapacities.getTotalProcessingPower();
+			if(temp > max)
+			{
+				max = temp;
+			}
+		}
+		
+		System.out.println("Max PM: " + max);
+		
 		scaler = true;
 	}
 
@@ -154,15 +167,41 @@ public class RRJSched implements BasicJobScheduler
 	
 	private VirtualMachine createNewVM(Job job) throws VMManagementException, NetworkException
 	{
-			AlterableResourceConstraints rc = new AlterableResourceConstraints(job.nprocs, job.perProcCPUTime, job.usedMemory);
-			//rc.multiply(2);
-			VirtualMachine vm;
+		double required = job.nprocs * ExercisesBase.maxProcessingCap;
+		Collections.sort(orderedPMs, new PMComparator());
+		
+		int availableIndex = 0;
+		
+		for(int i = 0; i < orderedPMs.size(); i++)
+		{
+			double temp = orderedPMs.get(i).freeCapacities.getTotalProcessingPower();
+			if(temp > orderedPMs.get(availableIndex).freeCapacities.getTotalProcessingPower())
+			{
+				availableIndex = i;
+			}
+		}
+		
+		System.out.println("Job requires: " + required);
+		System.out.println("Available: " + orderedPMs.get(availableIndex).freeCapacities.getTotalProcessingPower());
+		System.out.println(orderedPMs.get(availableIndex).freeCapacities);
+		
+		
+		double cpu = required / orderedPMs.get(availableIndex).freeCapacities.getTotalProcessingPower();
+		
+		System.out.println("CPU: " + cpu);
+		System.out.println("--------------");
+		
+		AlterableResourceConstraints rc = new AlterableResourceConstraints(
+				cpu, orderedPMs.get(availableIndex).freeCapacities.getTotalProcessingPower(), job.usedMemory
+				);
+		//rc.multiply(2);
+		VirtualMachine vm;
 
-			vm = iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), rc,
-					iaas.repositories.get(0), 1)[0];
+		vm = iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), rc,
+				iaas.repositories.get(0), 1)[0];
 			
-			vms.add(vm);
-			return vm;
+		vms.add(vm);
+		return vm;
 	}
 	
 	private VirtualMachine getHandlingVM(Job job)
@@ -173,21 +212,12 @@ public class RRJSched implements BasicJobScheduler
 		
 		for(VirtualMachine vm : vms)
 		{
-			//System.out.println(vm.getResourceAllocation().allocated.getRequiredCPUs() * vm.getResourceAllocation().allocated.getRequiredProcessingPower());
-			//System.out.println(rc.getRequiredCPUs() * rc.getRequiredProcessingPower());
-			//System.out.println(vm.underProcessing.size());
-			//System.out.println(vm.getState());
-			//System.out.println("-------------------");
-			
 			if(vm.getResourceAllocation().allocated.getRequiredCPUs() * vm.getResourceAllocation().allocated.getRequiredProcessingPower()
 					> rc.getRequiredCPUs() * rc.getRequiredProcessingPower()
 					&& vm.underProcessing.size() == 0
 					&& vm.getState() == State.RUNNING)
 			{
 				handler = vm;
-				//System.out.println("VM found");
-				//System.out.println(vm);
-				//System.out.println("----------------------");
 				break;
 			}
 		}
