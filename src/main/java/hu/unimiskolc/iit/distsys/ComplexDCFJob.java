@@ -30,16 +30,19 @@ import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ResourceConsumption
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ResourceConsumption.ConsumptionEvent;
 import hu.mta.sztaki.lpds.cloud.simulator.io.NetworkNode.NetworkException;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 
 public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 	private static HashMap<VirtualMachine, DeferredEvent> vmMarkers = new HashMap<VirtualMachine, DeferredEvent>();
+	private static HashMap<String, ArrayList<ComplexDCFJob>> coupledJobs = new HashMap<String, ArrayList<ComplexDCFJob>>();
 	private static int failingVMCounter = 0;
 	private static int vmReuseCount = 0;
 	public static final long noJobVMMaxLife = 30000;
 	private boolean allowBasicOperations = false;
 	private ConsumptionEvent myEvent;
 	private VirtualMachine myVM;
+	private double availabilityLevel = -1;
 
 	/**
 	 * Constructs the job object (to be used by job generators)
@@ -62,6 +65,22 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 			String executable, Job preceding, long delayAfter) {
 		super(id, submit, queue, exec, nprocs, ppCpu, ppMem, user, group,
 				executable, preceding, delayAfter);
+	}
+
+	public ComplexDCFJob(ComplexDCFJob toCoupleWith) {
+		super(toCoupleWith.getId(), toCoupleWith.getSubmittimeSecs(),
+				toCoupleWith.getQueuetimeSecs(),
+				toCoupleWith.getExectimeSecs(), toCoupleWith.nprocs,
+				toCoupleWith.perProcCPUTime, toCoupleWith.usedMemory,
+				toCoupleWith.user, toCoupleWith.group, toCoupleWith.executable,
+				toCoupleWith.preceding, toCoupleWith.thinkTimeAfterPreceeding);
+		ArrayList<ComplexDCFJob> list = coupledJobs.get(getId());
+		if (list == null) {
+			list = new ArrayList<ComplexDCFJob>();
+			list.add(toCoupleWith);
+			coupledJobs.put(getId(), list);
+		}
+		list.add(this);
 	}
 
 	/**
@@ -98,7 +117,9 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 	 * showing that with a runtime exception!
 	 */
 	public void conCancelled(ResourceConsumption problematic) {
-		throw new RuntimeException("CANCELLED: " + this);
+		if (availabilityLevel < 0) {
+			throw new RuntimeException("CANCELLED: " + this);
+		}
 	}
 
 	/**
@@ -147,7 +168,46 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 	@Override
 	public void completed() {
 		if (allowBasicOperations) {
-			super.completed();
+			ArrayList<ComplexDCFJob> list = coupledJobs.remove(getId());
+			if (list == null) {
+				super.completed();
+			} else {
+				for (ComplexDCFJob j : list) {
+					boolean preAllow = j.allowBasicOperations;
+					j.allowBasicOperations = true;
+					j.completed();
+					j.allowBasicOperations = preAllow;
+				}
+			}
+		}
+	}
+
+	/**
+	 * Determines the required availability level of the job
+	 * 
+	 * @return the availability level (if set), otherwise -1
+	 */
+	public double getAvailabilityLevel() {
+		return availabilityLevel;
+	}
+
+	/**
+	 * Sets the expected level of availability for the job in the range of 0-1.
+	 * This function is only callable once! If called repeatedly it throws
+	 * IllegalStateExceptions!
+	 * 
+	 * @param availabilityLevel
+	 *            should be in the range of 0-1.
+	 * @throws IllegalStateException
+	 *             if the function is called more than once!
+	 */
+	public void setAvailabilityLevel(double availabilityLevel)
+			throws IllegalStateException {
+		if (this.availabilityLevel == -1) {
+			this.availabilityLevel = availabilityLevel;
+		} else {
+			throw new IllegalStateException(
+					"Cannot alter an already set availability level!");
 		}
 	}
 
@@ -168,4 +228,5 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 	public static int getVmReuseCount() {
 		return vmReuseCount;
 	}
+
 }
