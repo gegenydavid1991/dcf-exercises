@@ -22,6 +22,14 @@
  */
 package hu.unimiskolc.iit.distsys;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import org.apache.commons.lang3.RandomUtils;
+import org.junit.Assert;
+import org.junit.Test;
+
 import hu.mta.sztaki.lpds.cloud.simulator.Timed;
 import hu.mta.sztaki.lpds.cloud.simulator.helpers.job.Job;
 import hu.mta.sztaki.lpds.cloud.simulator.helpers.job.JobListAnalyser;
@@ -36,19 +44,11 @@ import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.AlterableResourceCons
 import hu.mta.sztaki.lpds.cloud.simulator.io.Repository;
 import hu.mta.sztaki.lpds.cloud.simulator.io.VirtualAppliance;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-
-import org.apache.commons.lang3.RandomUtils;
-import org.junit.Assert;
-import org.junit.Test;
-
 public class TestHighAvailability {
-	public static final double[] availabilityLevels = { 0.98, 0.99, 1};
-	public static final double pmAvailability = 0.65;
+	public static final double[] availabilityLevels = { 0.75, 0.9, 0.95, 0.99 };
+	public static final double pmAvailability = 0.975;
 
-	@Test//(timeout = 180000)
+	@Test(timeout = 30000)
 	public void hatest() throws Exception {
 		int[] successCounters = new int[availabilityLevels.length];
 		int[] totalCounters = new int[availabilityLevels.length];
@@ -99,16 +99,20 @@ public class TestHighAvailability {
 
 		// Prepares the faulty PMs
 		class MyTimed extends Timed {
+			ArrayList<VMHandler> myHandlers = new ArrayList<VMHandler>();
+
 			public MyTimed() {
-				subscribe(300000);
+				subscribe(120000);
 			}
 
 			class VMHandler implements VirtualMachine.StateChange {
 				private final PhysicalMachine pm;
+				private ArrayList<PhysicalMachine.ResourceAllocation> ras = new ArrayList<PhysicalMachine.ResourceAllocation>();
 				private ArrayList<VirtualMachine> vms = new ArrayList<VirtualMachine>();
 
 				public VMHandler(final PhysicalMachine pm) throws SecurityException, IaaSHandlingException,
 						InstantiationException, IllegalAccessException, NoSuchFieldException, VMManagementException {
+					myHandlers.add(this);
 					this.pm = pm;
 					updateVMSet();
 				}
@@ -127,20 +131,33 @@ public class TestHighAvailability {
 				 */
 				private void updateVMSet() throws VMManagementException, SecurityException, IaaSHandlingException,
 						InstantiationException, IllegalAccessException, NoSuchFieldException {
-					vms.clear();
-					vms.addAll(pm.publicVms);
+					clearAllocations();
 					boolean noSubscription = true;
-					for (int i = 0; i < vms.size(); i++) {
-						VirtualMachine vm = vms.get(i);
-						if (!vm.getState().equals(VirtualMachine.State.RUNNING)) {
-							vm.subscribeStateChange(this);
-							noSubscription = false;
-						} else {
-							vm.destroy(true);
+					do {
+						vms.clear();
+						vms.addAll(pm.publicVms);
+						for (int i = 0; i < vms.size(); i++) {
+							VirtualMachine vm = vms.get(i);
+							if (!vm.getState().equals(VirtualMachine.State.RUNNING)) {
+								vm.subscribeStateChange(this);
+								noSubscription = false;
+							} else {
+								vm.destroy(true);
+							}
 						}
-					}
+					} while (noSubscription && pm.isHostingVMs());
 					if (noSubscription) {
 						doPMReReg(pm);
+					} else {
+						addnewAllocation();
+					}
+				}
+
+				private void addnewAllocation() throws VMManagementException {
+					PhysicalMachine.ResourceAllocation ra = pm.allocateResources(pm.freeCapacities, false,
+							PhysicalMachine.migrationAllocLen * 1000);
+					if (ra != null) {
+						ras.add(ra);
 					}
 				}
 
@@ -156,7 +173,9 @@ public class TestHighAvailability {
 					try {
 						if (newState.equals(VirtualMachine.State.RUNNING)) {
 							vm.destroy(true);
-						} else if (newState.equals(VirtualMachine.State.DESTROYED)) {
+						} else if (!oldState.equals(VirtualMachine.State.DESTROYED)
+								&& newState.equals(VirtualMachine.State.DESTROYED)) {
+							addnewAllocation();
 							vm.unsubscribeStateChange(this);
 							for (VirtualMachine currvm : vms) {
 								if (!currvm.getState().equals(VirtualMachine.State.DESTROYED)) {
@@ -172,8 +191,15 @@ public class TestHighAvailability {
 					}
 				}
 
+				private void clearAllocations() {
+					for (PhysicalMachine.ResourceAllocation ra : ras) {
+						ra.cancel();
+					}
+				}
+
 				private void doPMReReg(final PhysicalMachine pm) throws IaaSHandlingException, SecurityException,
 						InstantiationException, IllegalAccessException, NoSuchFieldException {
+					clearAllocations();
 					// drops the old machine
 					myIaaS.deregisterHost(pm);
 
@@ -188,15 +214,27 @@ public class TestHighAvailability {
 						// having too little CPU counts for our purposes
 					} while (newPM.getCapacities().getRequiredCPUs() < pm.getCapacities().getRequiredCPUs());
 					myIaaS.registerHost(newPM);
+					myHandlers.remove(this);
 				}
 			}
 
 			@Override
 			public void tick(long fires) {
+				StringBuffer sb = new StringBuffer();
+				for (PhysicalMachine pm : myIaaS.machines) {
+					sb.append(pm.hashCode() + " ");
+				}
 				ArrayList<PhysicalMachine> pmlist = new ArrayList<PhysicalMachine>();
 				for (PhysicalMachine pm : myIaaS.machines) {
 					if (Math.random() >= pmAvailability) {
 						pmlist.add(pm);
+						for (VMHandler vmh : myHandlers) {
+							// ensuring we are not going to delist a PM that is
+							// already about to be delisted
+							if (vmh.pm == pm) {
+								pmlist.remove(pmlist.size() - 1);
+							}
+						}
 					}
 				}
 				for (PhysicalMachine pm : pmlist) {
@@ -211,33 +249,32 @@ public class TestHighAvailability {
 				}
 			}
 		}
-		new MyTimed();
 		// Faulty PM preparation complete
 
 		// Preparing the scheduling
 		new JobtoVMScheduler(myIaaS, jobs);
+		new MyTimed();
 
 		Timed.simulateUntilLastEvent();
 
 		for (final Job j : jobs) {
 			ComplexDCFJob jobconv = (ComplexDCFJob) j;
-			// Basic tests:
-			Assert.assertTrue("All jobs should start but " + j + " did not", j.getRealqueueTime() >= 0);
 			if (j.getRealstopTime() >= 0) {
 				successCounters[Arrays.binarySearch(availabilityLevels, jobconv.getAvailabilityLevel())]++;
 				// More complex tests:
 				// Should not allow too slow execution time
 				Assert.assertTrue(
-						"Every job should run faster or equal than it was originally expected but " + j + " did so",
+						"Every job should run faster or equal than it was originally expected but " + j
+								+ " did not do so",
 						j.getExectimeSecs() * 3 > j.getRealstopTime() - j.getRealqueueTime());
 				// Should not allow too long queueing time
-				Assert.assertTrue("Jobs should not queue more than a VM instantiation time but " + j + " did so",
+				Assert.assertTrue("Jobs should not queue more than a VM instantiation time but " + j + " did not do so",
 						j.getRealqueueTime() < vmCreationTime * 3);
 			}
 		}
 
 		for (int i = 0; i < availabilityLevels.length; i++) {
-			System.out.println(availabilityLevels[i] + " " + successCounters[i] + " " + totalCounters[i] + " " + (double) successCounters[i] / totalCounters[i]);
+			System.out.println(availabilityLevels[i] + " " + successCounters[i] + " " + totalCounters[i]);
 			Assert.assertEquals(
 					"Jobs with availability level " + availabilityLevels[i] + " did not get their expected qualities",
 					availabilityLevels[i], (double) successCounters[i] / totalCounters[i],
