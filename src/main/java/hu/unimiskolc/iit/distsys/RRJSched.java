@@ -10,12 +10,14 @@ import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine.StateChange;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.ConstantConstraints;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ConsumptionEventAdapter;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ResourceConsumption;
+import hu.mta.sztaki.lpds.cloud.simulator.io.NetworkNode.NetworkException;
 import hu.mta.sztaki.lpds.cloud.simulator.io.Repository;
 import hu.mta.sztaki.lpds.cloud.simulator.io.VirtualAppliance;
 import hu.unimiskolc.iit.distsys.ComplexDCFJob;
 import hu.unimiskolc.iit.distsys.ExercisesBase;
 import hu.unimiskolc.iit.distsys.interfaces.BasicJobScheduler;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 
@@ -27,8 +29,10 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 	private VirtualAppliance va;
 	private HashMap<VirtualMachine, Job> vmsWithPurpose = new HashMap<VirtualMachine, Job>();
 	private HashMap<VirtualMachine, DeferredEvent> vmPool = new HashMap<VirtualMachine, DeferredEvent>();
-	private int[] availabilitySuccesses = new int[TestHighAvailability.availabilityLevels.length];
-	private int[] availabilityFailures = new int[TestHighAvailability.availabilityLevels.length];
+	public static int[] availabilitySuccesses = new int[TestHighAvailability.availabilityLevels.length];
+	public static int[] availabilityFailures = new int[TestHighAvailability.availabilityLevels.length];
+	public static ArrayList<Job> handledJobs = new ArrayList<Job>();
+	public static ArrayList<Job> remainingJobs = new ArrayList<Job>();
 
 	public void setupVMset(Collection<VirtualMachine> vms)
 	{
@@ -50,92 +54,66 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 
 	public void handleJobRequestArrival(Job j)
 	{
-		try
+		if(shouldRun(j))
 		{
-			if(shouldRun(j))
+			ConstantConstraints cc = new ConstantConstraints(j.nprocs, ExercisesBase.minProcessingCap,
+					ExercisesBase.minMem / j.nprocs);
+			for (VirtualMachine vm : vmPool.keySet())
 			{
-				ConstantConstraints cc = new ConstantConstraints(j.nprocs, ExercisesBase.minProcessingCap,
-						ExercisesBase.minMem / j.nprocs);
-				for (VirtualMachine vm : vmPool.keySet())
+				if(vm.getState() == State.DESTROYED)
 				{
-					if (vm.getResourceAllocation().allocated.getRequiredCPUs() >= j.nprocs)
-					{
-						vmPool.remove(vm).cancel();
-						allocateVMforJob(vm, j);
-						return;
-					}
-				}
-				VirtualMachine vm = iaas.requestVM(va, cc, r, 1)[0];
-				vm.subscribeStateChange(this);
-				vmsWithPurpose.put(vm, j);
-			}
-			else
-			{
-				if(j.getRealqueueTime() < 0)
-				{
-					// Start and kill job if needed.
-					ConstantConstraints cc = new ConstantConstraints(j.nprocs, ExercisesBase.minProcessingCap,
-							ExercisesBase.minMem / j.nprocs);
-					
-					VirtualMachine vm = iaas.requestVM(va, cc, r, 1)[0];
-					
-					final ComplexDCFJob job = (ComplexDCFJob) j;
-					
-					vm.subscribeStateChange(new StateChange()
-					{
-						@Override
-						public void stateChanged(VirtualMachine vm, State oldState, State newState)
-						{
-							if(newState == State.RUNNING)
-							{
-								try
-								{
-									allocateVMforFun(vm, job);
-									vm.destroy(true);
-								}
-								catch (VMManagementException e)
-								{
-									e.printStackTrace();
-								}
-							}
-						}
-					});
+					continue;
 				}
 				
-				int index = getAvailabilityIndex(j);
-				availabilityFailures[index]++;
+				if (vm.getResourceAllocation().allocated.getRequiredCPUs() >= j.nprocs)
+				{
+					vmPool.remove(vm).cancel();
+					allocateVMforJob(vm, j);
+					return;
+				}
 			}
-		} catch (Exception e)
-		{
-			throw new RuntimeException(e);
-		}
-	}
+			VirtualMachine vm =null;
+			try
+			{
+				vm = iaas.requestVM(va, cc, r, 1)[0];
+			} 
+			catch (VMManagementException e)
+			{
+				e.printStackTrace();
+			} 
+			catch (NetworkException e)
+			{
+				e.printStackTrace();
+			}
 
-	private void allocateVMforFun(final VirtualMachine vm, final Job j)
-	{
-		try
-		{
-			((ComplexDCFJob) j).startNowOnVM(vm, new ConsumptionEventAdapter()
-			{
-				@Override
-				public void conComplete()
-				{
-					super.conComplete();
-					System.err.println("Should not get here");
-				}
-				
-				@Override
-				public void conCancelled(ResourceConsumption problematic)
-				{
-					super.conCancelled(problematic);
-					System.out.println("Job was \"not started\".");
-				}
-			});
+			vm.subscribeStateChange(this);
+			vmsWithPurpose.put(vm, j);
 			
-			vm.destroy(true);
-		} catch (Exception e)
+			if(!handledJobs.contains(j))
+			{
+				handledJobs.add(j);
+			}
+			
+			if(!remainingJobs.contains(j))
+			{
+				remainingJobs.add(j);
+			}
+		}
+		else
 		{
-			throw new RuntimeException(e);
+			if(!handledJobs.contains(j))
+			{
+				handledJobs.add(j);
+			}
+			
+			if(!remainingJobs.contains(j))
+			{
+				remainingJobs.add(j);
+			}
+			
+			int index = getAvailabilityIndex(j);
+			availabilityFailures[index]++;
+			remainingJobs.remove(j);
 		}
 	}
 	
@@ -152,6 +130,7 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 					
 					int index =	getAvailabilityIndex(j);
 					
+					remainingJobs.remove(j);
 					availabilitySuccesses[index]++;
 					
 					vmPool.put(vm, new DeferredEvent(ComplexDCFJob.noJobVMMaxLife - 1000)
@@ -177,6 +156,16 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 					handleJobRequestArrival(j);
 				}
 			});
+			
+			if(!handledJobs.contains(j))
+			{
+				handledJobs.add(j);
+			}
+			
+			if(!remainingJobs.contains(j))
+			{
+				remainingJobs.add(j);
+			}
 		} catch (Exception e)
 		{
 			throw new RuntimeException(e);
@@ -196,6 +185,11 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 	private boolean shouldRun(Job j)
 	{
 		ComplexDCFJob job = (ComplexDCFJob) j;
+		
+		if(job == null)
+		{
+			return false;
+		}
 		
 		double availability = job.getAvailabilityLevel();
 		int index = getAvailabilityIndex(job);
