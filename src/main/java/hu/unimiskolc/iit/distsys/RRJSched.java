@@ -20,6 +20,9 @@ import hu.unimiskolc.iit.distsys.interfaces.BasicJobScheduler;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
+
+import at.ac.uibk.dps.cloud.simulator.test.simple.cloud.VMTest;
 
 public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 {
@@ -31,8 +34,9 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 	private HashMap<VirtualMachine, DeferredEvent> vmPool = new HashMap<VirtualMachine, DeferredEvent>();
 	public static int[] availabilitySuccesses = new int[TestHighAvailability.availabilityLevels.length];
 	public static int[] availabilityFailures = new int[TestHighAvailability.availabilityLevels.length];
-	public static ArrayList<Job> handledJobs = new ArrayList<Job>();
-	public static ArrayList<Job> remainingJobs = new ArrayList<Job>();
+	public static int[] jobCount = new int[TestHighAvailability.availabilityLevels.length];
+	
+	private ArrayList<Job> jobsToRun = new ArrayList<Job>();
 
 	public void setupVMset(Collection<VirtualMachine> vms)
 	{
@@ -49,29 +53,50 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 		{
 			availabilityFailures[i] = 0;
 			availabilitySuccesses[i] = 0;
+			jobCount[i] = 0;
 		}
 	}
 
 	public void handleJobRequestArrival(Job j)
-	{
-		if(shouldRun(j))
+	{		
+		boolean restarted = isRestarted(j);
+		
+		if(restarted || shouldRun(j))
 		{
+			if(!restarted)
+			{
+				jobsToRun.add(j);
+				int index = getAvailabilityIndex(j);
+				availabilitySuccesses[index]++;
+				
+				jobCount[getAvailabilityIndex(j)]++;
+			}
+			
 			ConstantConstraints cc = new ConstantConstraints(j.nprocs, ExercisesBase.minProcessingCap,
 					ExercisesBase.minMem / j.nprocs);
-			for (VirtualMachine vm : vmPool.keySet())
+			
+			Iterator<VirtualMachine> iter = vmPool.keySet().iterator();
+			
+			while(iter.hasNext())
 			{
+				VirtualMachine vm = iter.next();
+				
 				if(vm.getState() == State.DESTROYED)
 				{
+					vmPool.get(vm).cancel();
+					iter.remove();
 					continue;
 				}
 				
 				if (vm.getResourceAllocation().allocated.getRequiredCPUs() >= j.nprocs)
 				{
-					vmPool.remove(vm).cancel();
+					vmPool.get(vm).cancel();
+					iter.remove();
 					allocateVMforJob(vm, j);
 					return;
 				}
 			}
+
 			VirtualMachine vm =null;
 			try
 			{
@@ -88,51 +113,28 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 
 			vm.subscribeStateChange(this);
 			vmsWithPurpose.put(vm, j);
-			
-			if(!handledJobs.contains(j))
-			{
-				handledJobs.add(j);
-			}
-			
-			if(!remainingJobs.contains(j))
-			{
-				remainingJobs.add(j);
-			}
 		}
 		else
 		{
-			if(!handledJobs.contains(j))
-			{
-				handledJobs.add(j);
-			}
-			
-			if(!remainingJobs.contains(j))
-			{
-				remainingJobs.add(j);
-			}
-			
 			int index = getAvailabilityIndex(j);
 			availabilityFailures[index]++;
-			remainingJobs.remove(j);
+			jobCount[getAvailabilityIndex(j)]++;
 		}
 	}
 	
-	private void allocateVMforJob(final VirtualMachine vm, final Job j)
+	private void allocateVMforJob(final VirtualMachine vm, Job j)
 	{
 		try
 		{
-			((ComplexDCFJob) j).startNowOnVM(vm, new ConsumptionEventAdapter()
+			final ComplexDCFJob job = (ComplexDCFJob) j; 
+			
+			job.startNowOnVM(vm, new ConsumptionEventAdapter()
 			{
 				@Override
 				public void conComplete()
 				{
 					super.conComplete();
-					
-					int index =	getAvailabilityIndex(j);
-					
-					remainingJobs.remove(j);
-					availabilitySuccesses[index]++;
-					
+					/*
 					vmPool.put(vm, new DeferredEvent(ComplexDCFJob.noJobVMMaxLife - 1000)
 					{
 						protected void eventAction()
@@ -146,27 +148,21 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 								throw new RuntimeException(e);
 							}
 						}
-					});
+					});*/
 				}
 				
 				@Override
 				public void conCancelled(ResourceConsumption problematic)
 				{
 					super.conCancelled(problematic);
-					handleJobRequestArrival(j);
+					
+					Job newJob = new ComplexDCFJob(getOriginalJob(job));
+					
+					handleJobRequestArrival(newJob);
 				}
 			});
-			
-			if(!handledJobs.contains(j))
-			{
-				handledJobs.add(j);
-			}
-			
-			if(!remainingJobs.contains(j))
-			{
-				remainingJobs.add(j);
-			}
-		} catch (Exception e)
+		} 
+		catch (Exception e)
 		{
 			throw new RuntimeException(e);
 		}
@@ -199,23 +195,27 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 
 		double interval = 1 - availability;
 
+		boolean result;
+		
 		// Check if failure would cause the availability to go too low.
 		if ((double) success / (total + 1) < availability - interval / 2)
 		{
 			// If so, the job should run.
-			return true;
+			result = true;
 		}
 		// If not, check if success would cause availability to go too high.
 		else if ((double) (success + 1) / (total + 1) > availability + interval / 2)
 		{
 			// If so, job should not run.
-			return false;
-		} else
+			result = false;
+		} 
+		else
 		{
-			// Otherwise the job would stay in the allowed interval, so it can
-			// run.
-			return true;
+			// Otherwise the job would stay in the allowed interval, so it can run.
+			result = true;
 		}
+		
+		return result;
 	}
 	
 	private int getAvailabilityIndex(Job j)
@@ -236,5 +236,31 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 		}
 		
 		return index;
+	}
+	
+	private boolean isRestarted(Job job)
+	{
+		for(Job j : jobsToRun)
+		{
+			if(j.getId().equals(job.getId()))
+			{
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	private ComplexDCFJob getOriginalJob(Job job)
+	{
+		for(Job j : jobsToRun)
+		{
+			if(j.getId().equals(job.getId()))
+			{
+				return (ComplexDCFJob) j;
+			}
+		}
+		
+		return (ComplexDCFJob) job;
 	}
 }

@@ -41,7 +41,7 @@ public class ComplexDCFJob extends DCFJob implements ConsumptionEvent {
 	private static int vmReuseCount = 0;
 	public static final long noJobVMMaxLife = 30000;
 	private boolean allowBasicOperations = false;
-	private ConsumptionEvent myEvent;
+	public ConsumptionEvent myEvent;
 	private VirtualMachine myVM;
 	private double availabilityLevel = -1;
 
