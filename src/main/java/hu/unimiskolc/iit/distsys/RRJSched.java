@@ -134,7 +134,7 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 				public void conComplete()
 				{
 					super.conComplete();
-					/*
+					
 					vmPool.put(vm, new DeferredEvent(ComplexDCFJob.noJobVMMaxLife - 1000)
 					{
 						protected void eventAction()
@@ -148,7 +148,7 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 								throw new RuntimeException(e);
 							}
 						}
-					});*/
+					});
 				}
 				
 				@Override
@@ -156,7 +156,7 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 				{
 					super.conCancelled(problematic);
 					
-					Job newJob = new ComplexDCFJob(getOriginalJob(job));
+					Job newJob = new ComplexDCFJob(job);
 					
 					handleJobRequestArrival(newJob);
 				}
@@ -249,18 +249,5 @@ public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
 		}
 		
 		return false;
-	}
-	
-	private ComplexDCFJob getOriginalJob(Job job)
-	{
-		for(Job j : jobsToRun)
-		{
-			if(j.getId().equals(job.getId()))
-			{
-				return (ComplexDCFJob) j;
-			}
-		}
-		
-		return (ComplexDCFJob) job;
 	}
 }

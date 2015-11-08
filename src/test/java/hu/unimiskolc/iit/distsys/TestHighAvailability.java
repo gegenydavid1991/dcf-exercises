@@ -48,7 +48,7 @@ public class TestHighAvailability {
 	public static final double[] availabilityLevels = { 0.75, 0.9, 0.95, 0.99 };
 	public static final double pmAvailability = 0.975;
 
-	@Test//(timeout = 30000)
+	@Test(timeout = 30000)
 	public void hatest() throws Exception {
 		int[] successCounters = new int[availabilityLevels.length];
 		int[] totalCounters = new int[availabilityLevels.length];
