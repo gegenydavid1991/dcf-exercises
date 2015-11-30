@@ -46,7 +46,10 @@ public class TestCreatorFactory {
 	}
 
 	public static CloudProvider getNewProvider()
-			throws ClassNotFoundException, InstantiationException, IllegalAccessException {
+			throws ClassNotFoundException, InstantiationException, IllegalAccessException 
+	{
+		System.setProperty("hu.unimiskolc.iit.distsys.CustomCloudProvider", "hu.unimiskolc.iit.distsys.CustomCloudProvider");
+		
 		return (CloudProvider) Class.forName(System.getProperty("hu.unimiskolc.iit.distsys.CustomCloudProvider"))
 				.newInstance();
 	}
