@@ -1,253 +1,199 @@
 package hu.unimiskolc.iit.distsys;
 
-import hu.mta.sztaki.lpds.cloud.simulator.DeferredEvent;
-import hu.mta.sztaki.lpds.cloud.simulator.helpers.job.Job;
-import hu.mta.sztaki.lpds.cloud.simulator.iaas.IaaSService;
-import hu.mta.sztaki.lpds.cloud.simulator.iaas.VMManager.VMManagementException;
-import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine.State;
 import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine.StateChange;
-import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.ConstantConstraints;
-import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ConsumptionEventAdapter;
-import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ResourceConsumption;
-import hu.mta.sztaki.lpds.cloud.simulator.io.NetworkNode.NetworkException;
-import hu.mta.sztaki.lpds.cloud.simulator.io.Repository;
-import hu.mta.sztaki.lpds.cloud.simulator.io.VirtualAppliance;
-import hu.unimiskolc.iit.distsys.ComplexDCFJob;
-import hu.unimiskolc.iit.distsys.ExercisesBase;
-import hu.unimiskolc.iit.distsys.interfaces.BasicJobScheduler;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.Iterator;
+import java.util.Collections;
+import java.util.Queue;
 
-import at.ac.uibk.dps.cloud.simulator.test.simple.cloud.VMTest;
+import at.ac.uibk.dps.cloud.simulator.test.simple.DeferredEventTest;
+import hu.mta.sztaki.lpds.cloud.simulator.DeferredEvent;
+import hu.mta.sztaki.lpds.cloud.simulator.Timed;
+import hu.mta.sztaki.lpds.cloud.simulator.helpers.job.Job;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.IaaSService;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.PhysicalMachine;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.VMManager.NoSuchVMException;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.VMManager.VMManagementException;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.VirtualMachine;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.AlterableResourceConstraints;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.constraints.ResourceConstraints;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ConsumptionEventAdapter;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ResourceConsumption;
+import hu.mta.sztaki.lpds.cloud.simulator.iaas.resourcemodel.ResourceConsumption.ConsumptionEvent;
+import hu.mta.sztaki.lpds.cloud.simulator.io.NetworkNode.NetworkException;
+import hu.mta.sztaki.lpds.cloud.simulator.io.VirtualAppliance;
+import hu.unimiskolc.iit.distsys.interfaces.BasicJobScheduler;
 
-public class RRJSched implements BasicJobScheduler, VirtualMachine.StateChange
+public class RRJSched implements BasicJobScheduler
 {
-
-	private IaaSService iaas;
-	private Repository r;
-	private VirtualAppliance va;
-	private HashMap<VirtualMachine, Job> vmsWithPurpose = new HashMap<VirtualMachine, Job>();
-	private HashMap<VirtualMachine, DeferredEvent> vmPool = new HashMap<VirtualMachine, DeferredEvent>();
-	public static int[] availabilitySuccesses = new int[TestHighAvailability.availabilityLevels.length];
-	public static int[] availabilityFailures = new int[TestHighAvailability.availabilityLevels.length];
-	public static int[] jobCount = new int[TestHighAvailability.availabilityLevels.length];
+	boolean scaler = true;
 	
-	private ArrayList<Job> jobsToRun = new ArrayList<Job>();
-
-	public void setupVMset(Collection<VirtualMachine> vms)
+	IaaSService iaas;
+	ArrayList<VirtualMachine> vms = new ArrayList<VirtualMachine>();
+	ArrayList<PhysicalMachine> orderedPMs = new ArrayList<PhysicalMachine>();
+	public static int count = 0;
+		
+	@Override
+	public void setupVMset(Collection<VirtualMachine> vms) 
 	{
-		// ignore
+		this.vms = new ArrayList<VirtualMachine>(vms);
+		scaler = false;
 	}
-
-	public void setupIaaS(IaaSService iaas)
+	
+	@Override
+	public void setupIaaS(IaaSService iaas) 
 	{
 		this.iaas = iaas;
-		r = iaas.repositories.get(0);
-		va = (VirtualAppliance) r.contents().iterator().next();
-
-		for (int i = 0; i < TestHighAvailability.availabilityLevels.length; i++)
-		{
-			availabilityFailures[i] = 0;
-			availabilitySuccesses[i] = 0;
-			jobCount[i] = 0;
-		}
+		
+		orderedPMs = new ArrayList<PhysicalMachine>(iaas.machines);
+		Collections.sort(orderedPMs, new PMComparator());
+		
+		scaler = true;
 	}
 
+	@Override
 	public void handleJobRequestArrival(Job j)
-	{		
-		boolean restarted = isRestarted(j);
-		
-		if(restarted || shouldRun(j))
+	{
+		if(scaler)
 		{
-			if(!restarted)
-			{
-				jobsToRun.add(j);
-				int index = getAvailabilityIndex(j);
-				availabilitySuccesses[index]++;
-				
-				jobCount[getAvailabilityIndex(j)]++;
-			}
-			
-			ConstantConstraints cc = new ConstantConstraints(j.nprocs, ExercisesBase.minProcessingCap,
-					ExercisesBase.minMem / j.nprocs);
-			
-			Iterator<VirtualMachine> iter = vmPool.keySet().iterator();
-			
-			while(iter.hasNext())
-			{
-				VirtualMachine vm = iter.next();
-				
-				if(vm.getState() == State.DESTROYED)
-				{
-					vmPool.get(vm).cancel();
-					iter.remove();
-					continue;
-				}
-				
-				if (vm.getResourceAllocation().allocated.getRequiredCPUs() >= j.nprocs)
-				{
-					vmPool.get(vm).cancel();
-					iter.remove();
-					allocateVMforJob(vm, j);
-					return;
-				}
-			}
-
-			VirtualMachine vm =null;
-			try
-			{
-				vm = iaas.requestVM(va, cc, r, 1)[0];
-			} 
-			catch (VMManagementException e)
-			{
-				e.printStackTrace();
-			} 
-			catch (NetworkException e)
-			{
-				e.printStackTrace();
-			}
-
-			vm.subscribeStateChange(this);
-			vmsWithPurpose.put(vm, j);
+			handleScalerJobRequestArrival(j);
 		}
 		else
 		{
-			int index = getAvailabilityIndex(j);
-			availabilityFailures[index]++;
-			jobCount[getAvailabilityIndex(j)]++;
+			handleFillerJobRequestArrival(j);
 		}
 	}
-	
-	private void allocateVMforJob(final VirtualMachine vm, Job j)
-	{
-		try
-		{
-			final ComplexDCFJob job = (ComplexDCFJob) j; 
+
+	private void handleScalerJobRequestArrival(Job j) 
+	{	
+		VirtualMachine vm = null;
+		final ComplexDCFJob job = (ComplexDCFJob) j;
+		
+		vm = getHandlingVM(job);
 			
-			job.startNowOnVM(vm, new ConsumptionEventAdapter()
+		if(vm == null)
+		{
+			try 
 			{
-				@Override
-				public void conComplete()
-				{
-					super.conComplete();
-					
-					vmPool.put(vm, new DeferredEvent(ComplexDCFJob.noJobVMMaxLife - 1000)
+				vm = createNewVM(job);
+				vm.subscribeStateChange(new VMStateChange(job, vms, iaas));
+			} 
+			catch (Exception e) 
+			{
+				System.err.println(e.getMessage());
+												
+				new DeferredEvent(1000) {
+
+					@Override
+					protected void eventAction() 
 					{
-						protected void eventAction()
-						{
-							try
-							{
-								vmPool.remove(vm);
-								vm.destroy(false);
-							} catch (Exception e)
-							{
-								throw new RuntimeException(e);
-							}
-						}
-					});
-				}
+						handleScalerJobRequestArrival(job);
+					}
+					
+				};
 				
-				@Override
-				public void conCancelled(ResourceConsumption problematic)
-				{
-					super.conCancelled(problematic);
-					
-					Job newJob = new ComplexDCFJob(job);
-					
-					handleJobRequestArrival(newJob);
-				}
-			});
-		} 
-		catch (Exception e)
-		{
-			throw new RuntimeException(e);
+				return;
+			}
 		}
-
-	}
-
-	public void stateChanged(final VirtualMachine vm, State oldState, State newState)
-	{
-		if (newState.equals(VirtualMachine.State.RUNNING))
-		{
-			allocateVMforJob(vm, vmsWithPurpose.remove(vm));
-			vm.unsubscribeStateChange(this);
-		}
-	}
-
-	private boolean shouldRun(Job j)
-	{
-		ComplexDCFJob job = (ComplexDCFJob) j;
-		
-		if(job == null)
-		{
-			return false;
-		}
-		
-		double availability = job.getAvailabilityLevel();
-		int index = getAvailabilityIndex(job);
-
-		int success = availabilitySuccesses[index];
-		int total = availabilitySuccesses[index] + availabilityFailures[index];
-
-		double interval = 1 - availability;
-
-		boolean result;
-		
-		// Check if failure would cause the availability to go too low.
-		if ((double) success / (total + 1) < availability - interval / 2)
-		{
-			// If so, the job should run.
-			result = true;
-		}
-		// If not, check if success would cause availability to go too high.
-		else if ((double) (success + 1) / (total + 1) > availability + interval / 2)
-		{
-			// If so, job should not run.
-			result = false;
-		} 
 		else
 		{
-			// Otherwise the job would stay in the allowed interval, so it can run.
-			result = true;
+			System.out.println("VM found");
+			System.out.println(vm);
+			System.out.println("----------------");
+			try 
+			{
+				job.startNowOnVM(vm, new JobConsumptionEventAdapter(vm, vms, iaas));
+			}
+			catch (NetworkException e) 
+			{
+				e.printStackTrace();
+			}
 		}
-		
-		return result;
+			
+		System.out.println("Job started " + (++count));
+		System.out.println("Execution time: " + job.getExectimeSecs());
+		System.out.println("Current time: " + Timed.getFireCount() / 1000);
+		System.out.println("Expected finish time: " + (Timed.getFireCount() / 1000 + job.getExectimeSecs()));
+		System.out.println("Expected finish time: " + (job.getStartTimeInstance() + job.getExectimeSecs()));
+		System.out.println("VMs: " + vms.size());
+		System.out.println("-------------------");
+	}
+
+	private void handleFillerJobRequestArrival(final Job j)
+	{
+		for(VirtualMachine vm : vms)
+		{
+			if(vm.underProcessing.size() < 1 && vm.toBeAdded.size() < 1)
+			{
+				try
+				{
+					vm.newComputeTask(j.getExectimeSecs()
+							* vm.getPerTickProcessingPower() * 1000,
+							ResourceConsumption.unlimitedProcessing, 
+							new ConsumptionEvent()
+							{
+								@Override
+								public void conComplete() 
+								{
+									count++;
+									j.completed();
+								}
+
+								@Override
+								public void conCancelled(ResourceConsumption problematic) {  }
+							});
+					j.started();
+				}
+				catch(Exception e)
+				{
+					e.printStackTrace();
+				}
+			}
+		}
 	}
 	
-	private int getAvailabilityIndex(Job j)
+	private VirtualMachine createNewVM(Job job) throws VMManagementException, NetworkException
 	{
-		// Convert to ComplexDCFJob.
-		ComplexDCFJob job = (ComplexDCFJob) j;
+			AlterableResourceConstraints rc = new AlterableResourceConstraints(job.nprocs, job.perProcCPUTime, job.usedMemory);
+			//rc.multiply(2);
+			VirtualMachine vm;
 
-		double availability = job.getAvailabilityLevel();
-		int index = 0;
-
-		// Get the index associated with the job's availability level.
-		for (int i = 0; i < TestHighAvailability.availabilityLevels.length; i++)
+			vm = iaas.requestVM((VirtualAppliance) iaas.repositories.get(0).lookup("mainVA"), rc,
+					iaas.repositories.get(0), 1)[0];
+			
+			vms.add(vm);
+			return vm;
+	}
+	
+	private VirtualMachine getHandlingVM(Job job)
+	{
+		VirtualMachine handler = null;
+		AlterableResourceConstraints rc = new AlterableResourceConstraints(job.nprocs, job.perProcCPUTime, job.usedMemory);
+		//rc.multiply(2);
+		
+		for(VirtualMachine vm : vms)
 		{
-			if (availability == TestHighAvailability.availabilityLevels[i])
+			//System.out.println(vm.getResourceAllocation().allocated.getRequiredCPUs() * vm.getResourceAllocation().allocated.getRequiredProcessingPower());
+			//System.out.println(rc.getRequiredCPUs() * rc.getRequiredProcessingPower());
+			//System.out.println(vm.underProcessing.size());
+			//System.out.println(vm.getState());
+			//System.out.println("-------------------");
+			
+			if(vm.getResourceAllocation().allocated.getRequiredCPUs() * vm.getResourceAllocation().allocated.getRequiredProcessingPower()
+					> rc.getRequiredCPUs() * rc.getRequiredProcessingPower()
+					&& vm.underProcessing.size() == 0
+					&& vm.getState() == State.RUNNING)
 			{
-				index = i;
+				handler = vm;
+				//System.out.println("VM found");
+				//System.out.println(vm);
+				//System.out.println("----------------------");
+				break;
 			}
 		}
 		
-		return index;
-	}
-	
-	private boolean isRestarted(Job job)
-	{
-		for(Job j : jobsToRun)
-		{
-			if(j.getId().equals(job.getId()))
-			{
-				return true;
-			}
-		}
-		
-		return false;
+		return handler;
 	}
 }
