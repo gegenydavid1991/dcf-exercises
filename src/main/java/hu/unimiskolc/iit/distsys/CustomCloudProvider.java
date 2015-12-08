@@ -35,15 +35,6 @@ VMListener, StateChange
 		myProvidedService.subscribeToCapacityChanges(this);
 		((IaaSForwarder) myProvidedService).setQuoteProvider(this);
 		
-		try
-		{
-			otherListener = getVMListener();
-		} 
-		catch (Exception e)
-		{
-			e.printStackTrace();
-		}
-		
 		((IaaSForwarder) myProvidedService).setVMListener(this);
 	}
 
@@ -84,8 +75,6 @@ VMListener, StateChange
 		{
 			vm.subscribeStateChange(this);
 		}
-		
-		otherListener.newVMadded(vms);
 	}
 
 	@Override
